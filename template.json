@@ -1,0 +1,356 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Transform": "AWS::Serverless-2016-10-31",
+  "Description": "This is a cloudformation snippet to invoke step function synchronously via api gateway",
+  "Resources": {
+    "apiGateway": {
+      "Type": "AWS::ApiGateway::RestApi",
+      "Properties": {
+        "EndpointConfiguration": {
+          "Types": ["REGIONAL"]
+        },
+        "Name": "sandy-stepfunction-sync-api"
+      }
+    },
+    "apiGatewayResourcePart": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "apiGateway"
+        },
+        "ParentId": {
+          "Fn::GetAtt": ["apiGateway", "RootResourceId"]
+        },
+        "PathPart": "pathpart"
+      }
+    },
+    "apiGatewayResourcePart2": {
+      "Type": "AWS::ApiGateway::Resource",
+      "Properties": {
+        "RestApiId": {
+          "Ref": "apiGateway"
+        },
+        "ParentId": {
+          "Ref": "apiGatewayResourcePart"
+        },
+        "PathPart": "test"
+      }
+    },
+    "apiGatewayRootMethod": {
+      "Type": "AWS::ApiGateway::Method",
+      "Properties": {
+        "ResourceId": {
+          "Ref": "apiGatewayResourcePart2"
+        },
+        "RestApiId": {
+          "Ref": "apiGateway"
+        },
+        "ApiKeyRequired": true,
+        "AuthorizationType": "NONE",
+        "HttpMethod": "POST",
+        "Integration": {
+          "Type": "AWS",
+          "IntegrationHttpMethod": "POST",
+          "Uri": "arn:aws:apigateway:ap-south-1:states:action/StartSyncExecution",
+          "Credentials": {
+            "Fn::GetAtt": ["apiGatewayIamRole", "Arn"]
+          },
+          "RequestTemplates": {
+            "application/json": {
+              "Fn::Sub": [
+                "#set($inputRoot = $input.body)\n    #set($inputRootLength = $inputRoot.length())\n    #set($inputRootLength = $inputRootLength - 1)\n    \n    #set($inputRoot = $inputRoot.substring(0, $inputRootLength))\n    \n    #set($inputRoot = $inputRoot+\",'apiData':{'apiKey':'$context.identity.apiKey','httpMethod' : '$context.httpMethod'}\"+\"}\")\n    \n    {\n      \"input\" :\"$util.escapeJavaScript($inputRoot).replaceAll(\"'\",'\"')\",\n      \"stateMachineArn\": \"${StepFunctionArn}\"  \n    }",
+                {
+                  "StepFunctionArn": {
+                    "Ref": "stepFunction"
+                  }
+                }
+              ]
+            }
+          },
+          "IntegrationResponses": [
+            {
+              "StatusCode": 200,
+              "ResponseTemplates": {
+                "application/json": "#set ($bodyObj = $util.parseJson($input.body))\n        \n    #if ($bodyObj.status == \"SUCCEEDED\")\n        $bodyObj.output\n    #elseif ($bodyObj.status == \"FAILED\")\n        #set($context.responseOverride.status = 500)\n        {\n            \"cause\": \"$bodyObj.cause\",\n            \"error\": \"$bodyObj.error\"\n        }\n    #else\n        #set($context.responseOverride.status = 500)\n        $input.body\n    #end"
+              }
+            }
+          ]
+        },
+        "MethodResponses": [
+          {
+            "StatusCode": 200
+          }
+        ]
+      }
+    },
+    "apiGatewayDeployment": {
+      "Type": "AWS::ApiGateway::Deployment",
+      "DependsOn": ["apiGatewayRootMethod"],
+      "Properties": {
+        "RestApiId": {
+          "Ref": "apiGateway"
+        },
+        "StageName": "stage"
+      }
+    },
+    "apiKey": {
+      "Type": "AWS::ApiGateway::ApiKey",
+      "DependsOn": ["apiGatewayDeployment"],
+      "Properties": {
+        "Description": "Sandy API Key",
+        "Enabled": true,
+        "Name": "Sandy-ApiKey-StepFunction",
+        "StageKeys": [
+          {
+            "RestApiId": {
+              "Ref": "apiGateway"
+            },
+            "StageName": "stage"
+          }
+        ]
+      }
+    },
+    "apiKeyUsagePlan": {
+      "Type": "AWS::ApiGateway::UsagePlan",
+      "Properties": {
+        "ApiStages": [
+          {
+            "ApiId": {
+              "Ref": "apiGateway"
+            },
+            "Stage": "stage"
+          }
+        ],
+        "Description": "Usage plan for the API",
+        "UsagePlanName": "Sync Step Function Usage Plan"
+      }
+    },
+    "apiKeytoUsagePlanMap": {
+      "Type": "AWS::ApiGateway::UsagePlanKey",
+      "Properties": {
+        "KeyId": { "Fn::GetAtt": ["apiKey", "APIKeyId"] },
+        "KeyType": "API_KEY",
+        "UsagePlanId": { "Ref": "apiKeyUsagePlan" }
+      }
+    },
+    "apiGatewayIamRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+        ],
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["apigateway.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "VisualEditor0",
+                  "Effect": "Allow",
+                  "Action": "states:StartSyncExecution",
+                  "Resource": [
+                    {
+                      "Ref": "stepFunction"
+                    }
+                  ]
+                }
+              ]
+            },
+            "PolicyName": "StepFunctionSyncExecution"
+          }
+        ]
+      }
+    },
+    "helloWorldFunction1": {
+      "Type": "AWS::Serverless::Function",
+      "Properties": {
+        "CodeUri": "hello-world/",
+        "Handler": "app.lambdaHandler",
+        "Runtime": "nodejs14.x",
+        "FunctionName": "Sandy-StpFn-Demo-Lambda1"
+      }
+    },
+    "helloWorldFunction2": {
+      "Type": "AWS::Serverless::Function",
+      "Properties": {
+        "CodeUri": "hello-world/",
+        "Handler": "app.lambdaHandler",
+        "Runtime": "nodejs14.x",
+        "FunctionName": "Sandy-StpFn-Demo-Lambda2"
+      }
+    },
+    "helloWorldFunction3": {
+      "Type": "AWS::Serverless::Function",
+      "Properties": {
+        "CodeUri": "hello-world/",
+        "Handler": "app.lambdaHandler",
+        "Runtime": "nodejs14.x",
+        "FunctionName": "Sandy-StpFn-Demo-Lambda3"
+      }
+    },
+    "helloWorldFunction4": {
+      "Type": "AWS::Serverless::Function",
+      "Properties": {
+        "CodeUri": "hello-world/",
+        "Handler": "app.lambdaHandler",
+        "Runtime": "nodejs14.x",
+        "FunctionName": "Sandy-StpFn-Demo-Lambda4"
+      }
+    },
+    "stepFunctionLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/vendedlogs/states/sandy-express-sam-Logs"
+      }
+    },
+    "stepFunctionIamRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["states.amazonaws.com"]
+              },
+              "Action": ["sts:AssumeRole"]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogDelivery",
+                    "logs:GetLogDelivery",
+                    "logs:UpdateLogDelivery",
+                    "logs:DeleteLogDelivery",
+                    "logs:ListLogDeliveries",
+                    "logs:PutResourcePolicy",
+                    "logs:DescribeResourcePolicies",
+                    "logs:DescribeLogGroups"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": ["lambda:InvokeFunction"],
+                  "Resource": "*"
+                }
+              ]
+            },
+            "PolicyName": "StepFunctionPolicy"
+          }
+        ]
+      }
+    },
+    "stepFunction": {
+      "Type": "AWS::Serverless::StateMachine",
+      "Properties": {
+        "Name": "sandy-express-sam",
+        "Type": "EXPRESS",
+        "Role": {
+          "Fn::GetAtt": ["stepFunctionIamRole", "Arn"]
+        },
+        "Definition": {
+          "StartAt": "Lambda1",
+          "States": {
+            "Lambda1": {
+              "Type": "Task",
+              "Resource": {
+                "Fn::GetAtt": ["helloWorldFunction1", "Arn"]
+              },
+              "Next": "ChoiceState",
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "FallbackLambda"
+                }
+              ]
+            },
+            "ChoiceState": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.foo",
+                  "NumericEquals": 2,
+                  "Next": "Lambda2"
+                },
+                {
+                  "Variable": "$.foo",
+                  "NumericEquals": 3,
+                  "Next": "Lambda3"
+                }
+              ]
+            },
+            "Lambda2": {
+              "Type": "Task",
+              "Resource": {
+                "Fn::GetAtt": ["helloWorldFunction2", "Arn"]
+              },
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "FallbackLambda"
+                }
+              ],
+              "End": true
+            },
+            "Lambda3": {
+              "Type": "Task",
+              "Resource": {
+                "Fn::GetAtt": ["helloWorldFunction3", "Arn"]
+              },
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "FallbackLambda"
+                }
+              ],
+              "End": true
+            },
+            "FallbackLambda": {
+              "Type": "Task",
+              "Resource": {
+                "Fn::GetAtt": ["helloWorldFunction4", "Arn"]
+              },
+              "End": true
+            }
+          }
+        },
+        "Logging": {
+          "Destinations": [
+            {
+              "CloudWatchLogsLogGroup": {
+                "LogGroupArn": {
+                  "Fn::GetAtt": ["stepFunctionLogGroup", "Arn"]
+                }
+              }
+            }
+          ],
+          "IncludeExecutionData": true,
+          "Level": "ALL"
+        }
+      }
+    }
+  }
+}
