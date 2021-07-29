@@ -9,7 +9,7 @@
         "EndpointConfiguration": {
           "Types": ["REGIONAL"]
         },
-        "Name": "sandy-stepfunction-sync-api"
+        "Name": "stepfunction-sync-api"
       }
     },
     "apiGatewayResourcePart": {
@@ -58,7 +58,7 @@
           "RequestTemplates": {
             "application/json": {
               "Fn::Sub": [
-                "#set($inputRoot = $input.body)\n    #set($inputRootLength = $inputRoot.length())\n    #set($inputRootLength = $inputRootLength - 1)\n    \n    #set($inputRoot = $inputRoot.substring(0, $inputRootLength))\n    \n    #set($inputRoot = $inputRoot+\",'apiData':{'apiKey':'$context.identity.apiKey','httpMethod' : '$context.httpMethod'}\"+\"}\")\n    \n    {\n      \"input\" :\"$util.escapeJavaScript($inputRoot).replaceAll(\"'\",'\"')\",\n      \"stateMachineArn\": \"${StepFunctionArn}\"  \n    }",
+                "#set($body= $input.json('$'))\n    #set($inputRoot='{ \"inputData\" :'+$body+',\"apiInfo\":{\"httpMethod\" :\"'+ $context.httpMethod+'\",\"apiKey\" :\"'+ $context.identity.apiKey+'\"}}')\n    #set($apiData=$util.escapeJavaScript($inputRoot))\n    #set($apiData=$apiData.replaceAll(\"\\'\",\"'\"))\n    {\n      \"input\" :\"$apiData\",\n      \"stateMachineArn\": \"${StepFunctionArn}\"  \n    }",
                 {
                   "StepFunctionArn": {
                     "Ref": "stepFunction"
@@ -97,9 +97,9 @@
       "Type": "AWS::ApiGateway::ApiKey",
       "DependsOn": ["apiGatewayDeployment"],
       "Properties": {
-        "Description": "Sandy API Key",
+        "Description": "API Key",
         "Enabled": true,
-        "Name": "Sandy-ApiKey-StepFunction",
+        "Name": "ApiKey-StepFunction",
         "StageKeys": [
           {
             "RestApiId": {
@@ -180,7 +180,7 @@
         "CodeUri": "hello-world/",
         "Handler": "app.lambdaHandler",
         "Runtime": "nodejs14.x",
-        "FunctionName": "Sandy-StpFn-Demo-Lambda1"
+        "FunctionName": "StpFn-Demo-Lambda1"
       }
     },
     "helloWorldFunction2": {
@@ -189,7 +189,7 @@
         "CodeUri": "hello-world/",
         "Handler": "app.lambdaHandler",
         "Runtime": "nodejs14.x",
-        "FunctionName": "Sandy-StpFn-Demo-Lambda2"
+        "FunctionName": "StpFn-Demo-Lambda2"
       }
     },
     "helloWorldFunction3": {
@@ -198,7 +198,7 @@
         "CodeUri": "hello-world/",
         "Handler": "app.lambdaHandler",
         "Runtime": "nodejs14.x",
-        "FunctionName": "Sandy-StpFn-Demo-Lambda3"
+        "FunctionName": "StpFn-Demo-Lambda3"
       }
     },
     "helloWorldFunction4": {
@@ -207,13 +207,13 @@
         "CodeUri": "hello-world/",
         "Handler": "app.lambdaHandler",
         "Runtime": "nodejs14.x",
-        "FunctionName": "Sandy-StpFn-Demo-Lambda4"
+        "FunctionName": "StpFn-Demo-Lambda4"
       }
     },
     "stepFunctionLogGroup": {
       "Type": "AWS::Logs::LogGroup",
       "Properties": {
-        "LogGroupName": "/aws/vendedlogs/states/sandy-express-sam-Logs"
+        "LogGroupName": "/aws/vendedlogs/states/express-sam-Logs"
       }
     },
     "stepFunctionIamRole": {
@@ -266,7 +266,7 @@
     "stepFunction": {
       "Type": "AWS::Serverless::StateMachine",
       "Properties": {
-        "Name": "sandy-express-sam",
+        "Name": "express-sam",
         "Type": "EXPRESS",
         "Role": {
           "Fn::GetAtt": ["stepFunctionIamRole", "Arn"]
