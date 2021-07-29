@@ -112,6 +112,7 @@
     },
     "apiKeyUsagePlan": {
       "Type": "AWS::ApiGateway::UsagePlan",
+      "DependsOn": ["apiGatewayDeployment"],
       "Properties": {
         "ApiStages": [
           {
